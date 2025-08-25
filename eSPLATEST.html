@@ -1,0 +1,457 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ESP32 Doorbell — Events</title>
+
+  <style>
+    :root{
+      --bg:#f5f7fb; --bg2:#ffffff;
+      --card:#ffffff; --card-strong:#f1f3f8;
+      --muted:#666; --text:#111;
+      --accent:#002b5c; --accent-2:#ff1e2d;
+      --success:#2ad38b; --warn:#ff9800; --danger:#e53935;
+      --ring:rgba(0,43,92,.12); --shadow:0 6px 20px rgba(0,0,0,.06);
+    }
+
+    /* layout */
+    html,body{height:100%;margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;color:var(--text);background:var(--bg)}
+    .layout{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+    .nav{background:#f0f2f6;border-right:1px solid #e6e9ee;padding:20px;display:flex;flex-direction:column;gap:12px}
+    .nav h2{margin:0;font-size:15px;color:var(--accent)}
+    .nav a{color:#333;text-decoration:none;font-size:14px;padding:6px 0}
+
+    /* header & ribbon */
+    .pepsi-ribbon{position:fixed;inset:0 0 auto 0;height:6px;z-index:9999;background:linear-gradient(90deg,var(--accent-2),var(--accent))}
+    .main{padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+    .brand{display:flex;align-items:center;gap:14px}
+    .avatar{width:56px;height:56px;border-radius:50%;overflow:hidden;border:2px solid #dcdcdc;box-shadow:var(--shadow)}
+    .avatar img{width:100%;height:100%;object-fit:cover}
+    .title h1{font-size:15px;margin:0 0 4px;color:#222;font-weight:600}
+    .stage-title{font-size:34px;font-weight:900;margin:0;letter-spacing:2px;text-transform:none;
+                 background:linear-gradient(100deg,var(--accent-2),var(--accent));
+                 -webkit-background-clip:text;background-clip:text;color:transparent;opacity:0;
+                 animation:reveal 900ms ease-out forwards,pulse 3000ms 1s infinite}
+    .title .sub{font-size:12px;color:var(--muted)}
+    @keyframes reveal{0%{opacity:0;transform:translateY(6px) scale(.98)}100%{opacity:1;transform:none}}
+    @keyframes pulse{0%,100%{text-shadow:0 0 8px rgba(255,30,45,.22)}50%{text-shadow:0 0 18px rgba(0,43,92,.25)}}
+
+    /* controls */
+    .pill{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e6e9ee;padding:7px 12px;border-radius:999px;box-shadow:var(--shadow);color:#222;font-size:12px}
+    .status-dot{width:8px;height:8px;border-radius:50%}
+    .ok{background:var(--success)} .bad{background:var(--danger)}
+
+    .bar{display:grid;grid-template-columns:1fr auto;gap:12px;margin:14px 0}
+    .controls{display:flex;gap:8px;align-items:center}
+    .search{width:100%;background:#fff;border:1px solid #ddd;padding:9px 12px;border-radius:8px;outline:none;box-shadow:var(--shadow)}
+    .search:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--ring)}
+    button{background:#fff;border:1px solid #ddd;padding:9px 12px;border-radius:8px;cursor:pointer;font-weight:700;transition:.12s;box-shadow:var(--shadow);font-size:12px}
+    button:hover{border-color:var(--accent-2);color:var(--accent-2)}
+    .btn-on{color:var(--success)} .btn-off{color:var(--danger)} .btn-export{color:var(--accent)}
+
+    /* card + table */
+    .card{background:var(--card);border:1px solid #e6e9ee;border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+    .card-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:linear-gradient(90deg,rgba(255,30,45,.03),rgba(0,43,92,.03))}
+    .chips{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{padding:6px 10px;border:1px solid #e0e6ef;border-radius:999px;font-size:12px;background:#fafbfc;cursor:pointer}
+    .chip[data-active="true"]{border-color:var(--accent);color:var(--accent);font-weight:700}
+
+    .table-wrap{overflow:auto;max-height:48vh}
+    table{width:100%;border-collapse:collapse}
+    thead th{font-size:11px;text-transform:uppercase;color:#333;background:#f0f2f6;padding:10px;border-bottom:2px solid #e6e9ee;text-align:left}
+    tbody td{padding:10px;border-bottom:1px solid #f0f0f0;vertical-align:top;font-size:13px}
+    tbody tr:nth-child(odd){background:#fcfcfc}
+    tbody tr:hover{background:#fafafa}
+
+    .badge{padding:4px 8px;font-size:11px;border-radius:999px;font-weight:700;border:1px solid #e6e9ee;background:#f2f4f8;display:inline-block}
+    .badge.button{background:#eafaf1;color:#2e7d32}
+    .badge.pir{background:#fff4e5;color:#e65100}
+    .badge.system{background:#e8f0fe;color:#1a237e}
+    .badge.warn{background:#ffe0b2;color:#e65100}
+
+    .footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;font-size:12px;color:#555}
+    .info-section{margin-top:28px;padding:16px 18px;background:#fff;border:1px solid #e6e9ee;border-radius:12px}
+    .info-section h3{margin:0 0 6px;color:var(--accent);font-size:16px}
+    .info-section p,.info-section li{margin:6px 0;font-size:13px;color:#444;line-height:1.45}
+
+    @media (max-width:860px){
+      .layout{grid-template-columns:1fr}
+      .nav{display:none}
+      .stage-title{font-size:28px}
+      .title h1{font-size:14px}
+      .table-wrap{max-height:38vh}
+    }
+  </style>
+
+  <!-- Firebase v9 (modular) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue, query, orderByKey, limitToLast, onChildAdded } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+    // ---------- CONFIG ----------
+    const firebaseConfig = {
+      apiKey: "AIzaSyCjtLwMkP0uh9Vsw454W9aO5CejbzA87yg",
+      authDomain: "doorbell-test-6e9a5.firebaseapp.com",
+      databaseURL: "https://doorbell-test-6e9a5-default-rtdb.firebaseio.com",
+      projectId: "doorbell-test-6e9a5",
+      storageBucket: "doorbell-test-6e9a5.appspot.com",
+      messagingSenderId: "456911624750",
+      appId: "1:456911624750:web:085340dfd060107bbc1dbf"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db  = getDatabase(app);
+
+    // ---------- DOM refs ----------
+    const container = document.getElementById('events');         // wrapper (used for scroll anchoring)
+    const tbody = document.querySelector("#events tbody");
+    const statusClient   = document.getElementById("status-client");
+    const statusFirebase = document.getElementById("status-firebase");
+    const statusEsp      = document.getElementById("status-esp");
+    const lastBootEl     = document.getElementById("last-boot");
+    const countEl        = document.getElementById("count");
+    const searchEl       = document.getElementById("search");
+    const ledOnBtn       = document.getElementById("btn-on");
+    const ledOffBtn      = document.getElementById("btn-off");
+    const ledStateEl     = document.getElementById("led-state");
+    const chipAll        = document.querySelector('[data-chip="all"]');
+    const chipBtn        = document.querySelector('[data-chip="button"]');
+    const chipPir        = document.querySelector('[data-chip="pir"]');
+    const chipSys        = document.querySelector('[data-chip="system"]');
+    const exportBtn      = document.getElementById("btn-export");
+    const avatarImg      = document.getElementById("avatar-img");
+    const avatarInput    = document.getElementById("avatar-input");
+    const nameEl         = document.getElementById("owner-name");
+    const nameInput      = document.getElementById("name-input");
+    const changeAvatarBtn= document.getElementById("change-avatar-btn");
+
+    // ---------- state ----------
+    let rowCount = 0;
+    const MAX_ROWS = 400;
+    let activeFilter = "all";
+
+    // ---------- helpers ----------
+    // parse "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS"
+    function parseDoorbellTime(t){
+      if(!t || typeof t !== "string") return null;
+      const m = t.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+      if(!m) return null;
+      const [,Y,M,D,h,m2,s] = m;
+      return new Date(Number(Y), Number(M)-1, Number(D), Number(h), Number(m2), Number(s));
+    }
+
+    // map raw type (from RTDB) to display text (only visual)
+    function displayTypeFor(rawType){
+      if(rawType === 'pir') return 'D-0001';
+      if(rawType === 'button') return 'D-0002';
+      if(rawType === 'system') return 'System';
+      return rawType;
+    }
+
+    // badge CSS class should be based on raw type so filter + styles remain consistent
+    function badgeClassFor(rawType){
+      if(rawType === 'button') return 'badge button';
+      if(rawType === 'pir')    return 'badge pir';
+      if(rawType === 'system') return 'badge system';
+      return 'badge';
+    }
+
+    function severityTagFor(rawType, msg){
+      return (rawType === 'pir' && msg === 'presence_detected') ? '<span class="badge warn">warn</span>' : '<span class="badge">info</span>';
+    }
+
+    // normalize but keep rawType for filtering; include displayType for visual only
+    function normalizeEvent(raw, key){
+      const rawType = (raw?.sensor ?? 'event').toString().toLowerCase();
+      const message = (raw?.event ?? '').toString();
+      const timeStr  = raw?.time ?? '';
+     // const origin = rawType === 'button' ? 'user' : rawType === 'pir' ? 'sensor' : 'system';
+      const origin   = rawType === 'button' ? 'Vision_2' : rawType === 'pir' ? 'sensor' : 'system'; //pir = D-0002    E18-D80NK: D-0001    user now changed --> Vision_1
+      const displayType = displayTypeFor(rawType); // D-0001 / D-0002
+      return { key, rawType, displayType, message, timeStr, origin };
+    }
+
+    // ---------- profile (localStorage) ----------
+    const savedAvatar = localStorage.getItem('espdash.avatar');
+    if(savedAvatar) avatarImg.src = savedAvatar;
+    const savedName = localStorage.getItem('espdash.name') || 'LeejinBotics Technologies';
+    nameEl.textContent = savedName;
+    nameInput.value = savedName;
+
+    if(changeAvatarBtn){
+      changeAvatarBtn.addEventListener('click', ()=> avatarInput?.click());
+    }
+    avatarInput.addEventListener('change', async (e)=>{
+      const f = e.target.files?.[0]; if(!f) return;
+      const url = await new Promise((res, rej)=>{
+        const r = new FileReader();
+        r.onload = ()=> res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(f);
+      });
+      avatarImg.src = url; localStorage.setItem('espdash.avatar', url);
+    });
+    nameInput.addEventListener('input', ()=>{
+      const v = nameInput.value.trim() || 'LeejinBotics Technologies';
+      nameEl.textContent = v; localStorage.setItem('espdash.name', v);
+    });
+
+    // ---------- filters / search ----------
+    function applyFilters(){
+      const q = (searchEl.value || '').toLowerCase().trim();
+      let visible = 0;
+      for(const tr of tbody.querySelectorAll('tr')){
+        const typeMatches = (activeFilter === 'all') || (tr.dataset.type === activeFilter);
+        const hay = `${tr.dataset.type} ${tr.dataset.msg} ${tr.dataset.origin}`;
+        const searchMatches = hay.includes(q);
+        const show = typeMatches && searchMatches;
+        tr.style.display = show ? '' : 'none';
+        if(show) visible++;
+      }
+      countEl.textContent = `Showing ${visible} of ${rowCount} events`;
+    }
+
+    function setChipActive(which){
+      activeFilter = which;
+      [chipAll, chipBtn, chipPir, chipSys].forEach(c => c?.setAttribute('data-active', 'false'));
+      ({ all: chipAll, button: chipBtn, pir: chipPir, system: chipSys }[which])?.setAttribute('data-active', 'true');
+      applyFilters();
+    }
+
+    searchEl.addEventListener('input', applyFilters);
+    chipAll.addEventListener('click', ()=> setChipActive('all'));
+    chipBtn.addEventListener('click', ()=> setChipActive('button'));
+    chipPir.addEventListener('click', ()=> setChipActive('pir'));
+    chipSys.addEventListener('click', ()=> setChipActive('system'));
+
+    // ---------- connectivity / status ----------
+    function refreshClient(){
+      const online = navigator.onLine;
+      statusClient.innerHTML = online ? `<span class="status-dot ok"></span> Client: Online` : `<span class="status-dot bad"></span> Client: Offline`;
+    }
+    window.addEventListener('online', refreshClient);
+    window.addEventListener('offline', refreshClient);
+    refreshClient();
+
+    onValue(ref(db, '.info/connected'), snap=>{
+      const ok = !!snap.val();
+      statusFirebase.innerHTML = ok ? `<span class="status-dot ok"></span> RTDB: Connected` : `<span class="status-dot bad"></span> RTDB: Disconnected`;
+    }, err => {
+      console.warn('RTDB .info/connected error', err);
+      statusFirebase.innerHTML = `<span class="status-dot bad"></span> RTDB: Error`;
+    });
+
+    onValue(ref(db, '/health/last_boot'), snap=>{
+      const raw = snap.val();
+      const d = parseDoorbellTime(raw);
+      lastBootEl.textContent = d ? d.toLocaleString() : (raw || '—');
+    }, err => {
+      console.warn('last_boot error', err);
+      lastBootEl.textContent = '—';
+    });
+
+    onValue(ref(db, '/health/heartbeat'), snap=>{
+      const ts = Number(snap.val());
+      const age = Date.now() - (isNaN(ts)?0:ts);
+      const online = ts && age < 60000;
+      statusEsp.innerHTML = online ? `<span class="status-dot ok"></span> Conductor: Online` : `<span class="status-dot bad"></span> Conductor: Offline`;
+    }, err => {
+      console.warn('heartbeat error', err);
+      statusEsp.innerHTML = `<span class="status-dot bad"></span> Conductor: Error`;
+    });
+
+    // ---------- events stream (keep filtering / search working) ----------
+    const eventsQuery = query(ref(db, '/events'), orderByKey(), limitToLast(MAX_ROWS));
+    onChildAdded(eventsQuery, snap => {
+      const ev = normalizeEvent(snap.val(), snap.key);
+      addRow(ev);
+      console.log('[event]', ev);
+    });
+
+    // Add a row, but preserve user's scroll position (no jump when prepending)
+    function addRow(ev){
+      // compute scroll anchoring before DOM update
+      const prevScrollHeight = container.scrollHeight;
+      const prevScrollTop    = container.scrollTop;
+
+      const d = parseDoorbellTime(ev.timeStr);
+      const tr = document.createElement('tr');
+
+      // Keep dataset.type as RAW type (button/pir/system) so old chips/filters still work
+      tr.dataset.type   = ev.rawType;
+      tr.dataset.msg    = (ev.message || '').toLowerCase();
+      tr.dataset.origin = ev.origin;
+
+      // Display mapped label (D-0001 / D-0002) visually only
+      tr.innerHTML = `
+        <td style="white-space:nowrap">${d ? d.toLocaleString() : (ev.timeStr || 'unknown')}</td>
+        <td><span class="${badgeClassFor(ev.rawType)}">${ev.displayType}</span></td>
+        <td>${escapeHtml(ev.message)}</td>
+        <td>${escapeHtml(ev.origin)}</td>
+        <td>${severityTagFor(ev.rawType, ev.message)}</td>
+        <td>${escapeHtml(ev.key)}</td>
+      `;
+
+      tbody.prepend(tr);
+      rowCount++;
+      if(rowCount > MAX_ROWS){
+        tbody.removeChild(tbody.lastElementChild);
+        rowCount--;
+      }
+
+      // anchor scroll: adjust scrollTop so user's viewport doesn't jump
+      // newScroll - oldScroll added to prevScrollTop preserves the view
+      const newScrollHeight = container.scrollHeight;
+      container.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
+
+      applyFilters(); // keep count + filtering consistent
+    }
+
+    // ---------- LED control ----------
+    function setLed(state){ set(ref(db, '/commands/led'), state); }
+    ledOnBtn.addEventListener('click', ()=> { setLed('ON'); console.log('[led] ON'); });
+    ledOffBtn.addEventListener('click', ()=> { setLed('OFF'); console.log('[led] OFF'); });
+
+    onValue(ref(db, '/commands/led'), snap => {
+      const v = (snap.val() || '').toString().toUpperCase();
+      ledStateEl.textContent = `LED: ${v || '(unknown)'}`;
+      ledStateEl.style.color = (v === 'ON' ? '#2ad38b' : (v === 'OFF' ? '#e53935' : '#777'));
+    });
+
+    // ---------- CSV export ----------
+    exportBtn.addEventListener('click', ()=>{
+      const rows = [['Time','Type','Message','Origin','Severity','ID']];
+      for(const tr of tbody.querySelectorAll('tr')){
+        if(tr.style.display === 'none') continue;
+        rows.push([...tr.children].map(td => td.innerText.replaceAll('\n',' ').trim()));
+      }
+      const csv = rows.map(r => r.map(s => `"${s.replaceAll('"','""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'events.csv'; a.click();
+      setTimeout(()=> URL.revokeObjectURL(url), 600);
+      console.log('[export] rows:', rows.length);
+    });
+
+    // ---------- utility ----------
+    function escapeHtml(s){ return (s ?? '').toString().replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    // initialize UI
+    setChipActive('all');
+  </script>
+</head>
+
+<body>
+  <div class="pepsi-ribbon" aria-hidden="true"></div>
+
+  <div class="layout">
+    <aside class="nav" aria-label="Main navigation">
+      <h2>Navigation</h2>
+      <a href="#">🏠 Dashboard</a>
+      <a href="#about">ℹ️ About Us</a>
+      <a href="#services">🛠 Services</a>
+      <a href="#contact">📩 Contact</a>
+    </aside>
+
+    <main class="main" role="main">
+      <header>
+        <div class="brand">
+          <div class="avatar"><img id="avatar-img" src="profile.jpg" alt="Profile" /></div>
+          <div class="title">
+            <h1 id="owner-name">LeejinBotics Technologies</h1>
+            <!-- exact spelled & animated -->
+            <div class="stage-title">yourView</div>
+            <div class="sub">Real-time Events Dashboard</div>
+          </div>
+        </div>
+
+        <div class="meta" style="display:flex;gap:10px;flex-wrap:wrap">
+          <span id="status-client" class="pill"><span class="status-dot bad"></span> Client: —</span>
+          <span id="status-firebase" class="pill"><span class="status-dot bad"></span> RTDB: —</span>
+          <span id="status-esp" class="pill"><span class="status-dot bad"></span> Conductor: —</span>
+          <span class="pill">Last boot: <strong id="last-boot">—</strong></span>
+        </div>
+      </header>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="uploader" style="display:flex;align-items:center;gap:8px">
+            <button id="change-avatar-btn" class="pill" type="button">🖼️ Change Profile</button>
+            <input id="avatar-input" type="file" accept="image/*" style="position:absolute;left:-9999px;opacity:0" />
+            <label class="pill" title="Edit display name" style="gap:8px">
+              <span style="font-size:12px;color:var(--muted)">Name:</span>
+              <input id="name-input" type="text" placeholder="Enter display name" style="background:transparent;border:none;outline:none;width:160px;color:#111;font-weight:600"/>
+            </label>
+          </div>
+
+          <div class="chips" role="tablist" aria-label="Event filters">
+            <span class="chip" data-chip="all">All</span>
+            <!-- data-chip remains raw type so filtering works with existing firmware -->
+            <span class="chip" data-chip="pir">D-0001</span>
+            <span class="chip" data-chip="button">D-0002</span>
+            <span class="chip" data-chip="system">System</span>
+            <button id="btn-export" class="btn-export" title="Export visible rows to CSV">Export CSV</button>
+          </div>
+        </div>
+
+        <div class="bar" role="region" aria-label="Controls">
+          <input id="search" class="search" placeholder="Search by type, message, or origin…" aria-label="Search events" />
+          <div class="controls">
+            <span id="led-state" class="pill">LED: (unknown)</span>
+            <button id="btn-on" class="btn-on" type="button">Command 1</button>
+            <button id="btn-off" class="btn-off" type="button">Command 0</button>
+          </div>
+        </div>
+
+        <div class="table-wrap" id="events" aria-live="polite">
+          <table>
+            <thead>
+              <tr>
+                <th style="min-width:200px">Time</th>
+                <th style="min-width:100px">Type</th>
+                <th>Message</th>
+                <th style="min-width:110px">Origin</th>
+                <th style="min-width:90px">Severity</th>
+                <th style="min-width:160px">ID</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div> 
+
+      <div class="footer">
+        <div class="note" id="count">Showing 0 events</div>
+        <audio controls muted loop>
+          <source src="By Myself - The Grey Room _ Clark Sims.mp3" />
+        </audio>
+      </div>  Vision_1
+
+      <!-- placeholder sections -->
+      <section id="about" class="info-section">
+        <h3>About Us</h3>
+        <p>LeejinBotics Technologies builds reliable IoT solutions for smart spaces — from ESP32 doorbells to full building telemetry.</p>
+        <p class="muted">Demo dashboard fed by Firebase Realtime Database.</p>
+      </section>
+
+      <section id="services" class="info-section">
+        <h3>Our Services</h3>
+        <ul>
+          <li>Custom ESP32 firmware & hardware integration</li>
+          <li>Realtime dashboards & alerting</li>
+          <li>Sensor fusion & lightweight ML on edge</li>
+        </ul>
+      </section>
+
+      <section id="contact" class="info-section">
+        <h3>Contact</h3>
+        <p>Email: hello@leejinbotics.example</p>
+        <p>Phone: +000 000 0000</p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
